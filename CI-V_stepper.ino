@@ -40,6 +40,7 @@ Features:
 
 Changelog:
 ----------
+2020-01 CLI enter, uSteps settings
 2019-05 first initial version
 
 // Stepper //////////////////////////////////////////*/
@@ -96,7 +97,7 @@ bool SerialNeedStatus = false;
   //#define LCD_PCF8574AT             // If LCD uses PCF8574AT chip
 #endif
 
-const char* REV = "20190512";
+const char* REV = "20200127";
 
 #include "Trinamic_TMC2130.h"
 const int StepPin = 8;
@@ -287,6 +288,7 @@ unsigned long StorageFreqToStep[112][2] = { //0 - 4 294 967 295
 
 unsigned long freq = 0;
 unsigned long freqPrev;
+byte InputByte[21];
 byte incomingByte = 0;
 byte incomingByte1 = 0;
 
@@ -423,18 +425,7 @@ void setup(){
   myStepper.set_tbl(1); // ([0-3]) set comparator blank time to 16, 24, 36 or 54 clocks, 1 or 2 is recommended
   myStepper.set_toff(8); // ([0-15]) 0: driver disable, 1: use only with TBL>2, 2-15: off time setting during slow decay phase
   myStepper.set_en_pwm_mode(1); // StealtChop mode 1-ON 0-OFF
-  // Microstep long in uSeconds
-  switch (MicroSteps) {
-      case 1: uSeconds = 2000 ; break;
-      case 2: uSeconds = 700 ; break;
-      case 4: uSeconds = 600 ; break;
-      case 8: uSeconds = 300 ; break;
-      case 16: uSeconds = 200 ; break;
-      case 32: uSeconds = 60 ; break;
-      case 64: uSeconds = 16 ; break;
-      case 128: uSeconds = 11 ; break;
-      case 256: uSeconds = 11 ; break;
-  }
+  uStepTouSeconds();
   if(MicroSteps>1){
     EnableStepperStandby = true;
   }
@@ -665,7 +656,7 @@ void SerialCLI(){
 
            // c
          }else if(incomingByte==99){
-             Serial.println(F("Press CI-V address in hex..."));
+             Serial.println(F("Press CI-V address in hex (two chars 0-f)"));
              Serial.print(F("> "));
              while (Serial.available() == 0) {
                // Wait
@@ -695,16 +686,24 @@ void SerialCLI(){
                  EEPROM.write(14, CIV_ADRESS);
                  Serial.println();
 
-                 Serial.println(F("Baudrate..."));
-                 Serial.print(F("> "));
-                 while(!Serial.available()){
+                 Serial.println(F("Baudrate and [enter]"));
+                 // Serial.print(F("> "));
+                 // while(!Serial.available()){
+                 // }
+                 // delay(2000);
+                 // long CompareInt = Serial.parseInt();
+                 Enter();
+                 int intBuf=0;
+                 int mult=1;
+                 for (int j=InputByte[0]; j>0; j--){
+                   intBuf = intBuf + ((InputByte[j]-48)*mult);
+                   mult = mult*10;
                  }
-                 delay(2000);
-                 long CompareInt = Serial.parseInt();
-                 if(CompareInt>=80 && CompareInt<=115200){
-                   BAUDRATE1 = CompareInt;
+                 if(intBuf>=80 && intBuf<=115200){
+                   BAUDRATE1 = intBuf;
                    EEPROMWritelong(15, BAUDRATE1);
-                   Serial.println(BAUDRATE1);
+                   Serial.println(F("  write to EEPROM"));
+                   // Serial.println(BAUDRATE1);
                    Serial1.begin(BAUDRATE1, SERIAL_8N2);
                   //  Serial.print("** device will be restarted **");
                    delay(500);
@@ -720,27 +719,41 @@ void SerialCLI(){
 
            // @
          }else if(incomingByte==64){
-               Serial.println(F("Press micro steps... 0-8 ~ 1 2 4 8 16 32 64 128 256"));
-               Serial.print(F("> "));
-               while (Serial.available() == 0) {
-                 // Wait
+               Serial.println(F("Press micro steps 0-8 (default 4) and [enter], respond 1 2 4 8 16 32 64 128 256 uStep"));
+               // Serial.print(F("> "));
+               // while (Serial.available() == 0) {
+               //   // Wait
+               // }
+               // incomingByte = Serial.read();
+               Enter();
+               int intBuf=0;
+               int mult=1;
+               for (int j=InputByte[0]; j>0; j--){
+                 intBuf = intBuf + ((InputByte[j]-48)*mult);
+                 mult = mult*10;
                }
-               incomingByte = Serial.read();
-               if( (incomingByte-48 <= 8) ){
+               if( (intBuf <= 8) ){
                  MicroSteps=0x00;
-                 MicroSteps = MicroSteps | (1<<incomingByte-48);    // Set the n-th bit
+                 MicroSteps = MicroSteps | (1<<intBuf);    // Set the n-th bit
                  Serial.print(MicroSteps);
                  Serial.println(F(" microstep"));
                  EEPROM.write(19, MicroSteps);
 
-                 Serial.println(F("Stepper run current 0-31..."));
-                 Serial.print(F("> "));
-                 while(!Serial.available()){
+                 Serial.println(F("Stepper run current 0-31 (default 10) and [enter]"));
+                 // Serial.print(F("> "));
+                 // while(!Serial.available()){
+                 // }
+                 // delay(2000);
+                 // long CompareInt = Serial.parseInt();
+                 Enter();
+                 int intBuf=0;
+                 int mult=1;
+                 for (int j=InputByte[0]; j>0; j--){
+                   intBuf = intBuf + ((InputByte[j]-48)*mult);
+                   mult = mult*10;
                  }
-                 delay(2000);
-                 long CompareInt = Serial.parseInt();
-                 if(CompareInt>=0 && CompareInt<=31){
-                   CurrentRun = CompareInt;
+                 if(intBuf>=0 && intBuf<=31){
+                   CurrentRun = intBuf;
                    EEPROMWritelong(20, CurrentRun);
                    Serial.println(CurrentRun);
                    // stepper 1
@@ -751,7 +764,7 @@ void SerialCLI(){
                    myStepper.set_tbl(1); // ([0-3]) set comparator blank time to 16, 24, 36 or 54 clocks, 1 or 2 is recommended
                    myStepper.set_toff(8); // ([0-15]) 0: driver disable, 1: use only with TBL>2, 2-15: off time setting during slow decay phase
                    myStepper.set_en_pwm_mode(1); // StealtChop mode 1-ON 0-OFF
-
+                   uStepTouSeconds();
                  }else{
                    Serial.println(F(" accepts 0-31, exit"));
                  }
@@ -867,14 +880,21 @@ void SerialCLI(){
 
             // m
             }else if(incomingByte==109){
-              Serial.println(F("Set memory number between 2-112"));
-              Serial.print("> ");
-              while(!Serial.available()){
+              Serial.println(F("Set memory number between 2-112 and [enter]"));
+              Serial.print(F("> "));
+              // while(!Serial.available()){
+              // }
+              // delay(2000);
+              //     int CompareInt = Serial.parseInt();
+              Enter();
+              int intBuf=0;
+              int mult=1;
+              for (int j=InputByte[0]; j>0; j--){
+                intBuf = intBuf + ((InputByte[j]-48)*mult);
+                mult = mult*10;
               }
-              delay(2000);
-                  int CompareInt = Serial.parseInt();
-                  if(CompareInt>=2 && CompareInt<=112){
-                    NumberOfMemory = CompareInt;
+                  if(intBuf>=2 && intBuf<=112){
+                    NumberOfMemory = intBuf;
                     NumberOfBank=224/(NumberOfMemory+1);
                     if(NumberOfBank>16){
                       NumberOfBank=16;
@@ -918,6 +938,32 @@ void SerialCLI(){
     }
   #endif
 }
+//-------------------------------------------------------------------------------------------------------
+void Enter(){
+  InputByte[0]=0;
+  incomingByte = 0;
+  bool br=false;
+  Serial.print(F("> "));
+
+  while(br==false) {
+    if(Serial.available()){
+      incomingByte=Serial.read();
+      if(incomingByte==13){
+        br=true;
+        Serial.println("");
+      }else{
+        Serial.write(incomingByte);
+        InputByte[InputByte[0]+1]=incomingByte;
+        InputByte[0]++;
+      }
+      if(InputByte[0]==20){
+        br=true;
+        Serial.print(F(" too long"));
+      }
+    }
+  }
+}
+
 //---------------------------------------------------------------------------------------------------------
 void ListCommands(){
   #if defined(CLI)
@@ -1514,6 +1560,21 @@ void OnTheFlyStepperControl(){
   }
 }
 
+//------------------------------------------------------------------------------------
+void uStepTouSeconds(){
+  // Microstep long in uSeconds
+  switch (MicroSteps) {
+      case 1: uSeconds = 2000 ; break;
+      case 2: uSeconds = 700 ; break;
+      case 4: uSeconds = 600 ; break;
+      case 8: uSeconds = 300 ; break;
+      case 16: uSeconds = 200 ; break;
+      case 32: uSeconds = 60 ; break;
+      case 64: uSeconds = 16 ; break;
+      case 128: uSeconds = 11 ; break;
+      case 256: uSeconds = 11 ; break;
+  }
+}
 //------------------------------------------------------------------------------------
 
 void InterruptON(int endstop){
